@@ -10,7 +10,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
-from expected_value_analyzer import ExpectedValueAnalyzer
 
 
 @dataclass
@@ -49,16 +48,11 @@ class RegimeBasedTradingStrategy:
     Uses your regime analysis, coin scoring, and position management logic
     """
 
-    def __init__(self, initial_capital: float = 100000, use_ev_filter: bool = True, enable_decision_explanations: bool = True):
+    def __init__(self, initial_capital: float = 100000, enable_decision_explanations: bool = True):
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
         self.positions: Dict[str, Position] = {}
         self.trades: List[Trade] = []
-        
-        # Expected Value system
-        self.use_ev_filter = use_ev_filter
-        self.ev_analyzer = ExpectedValueAnalyzer(min_ev_threshold=0.1, max_risk_per_trade=0.02)
-        self.ev_initialized = False
         
         # Decision explanations system
         self.enable_decision_explanations = enable_decision_explanations
@@ -128,13 +122,6 @@ class RegimeBasedTradingStrategy:
                 if symbol in ['BTCUSD', 'ETHUSD', 'USDTUSD']:
                     pc_score += 0.15 + max(0, -pc2_factor * 0.1)  # Bonus for low volatility
                 
-            elif strategy == "CRISIS":
-                # Flight to quality in crisis
-                if symbol in ['BTCUSD', 'USDTUSD']:
-                    pc_score += 0.25
-                else:
-                    pc_score -= 0.10  # Penalty for altcoins
-            
             # Volatility adjustment based on PC2
             volatility_penalty = abs(pc2_factor) * 0.02 if abs(pc2_factor) > 2.0 else 0
             
@@ -155,9 +142,12 @@ class RegimeBasedTradingStrategy:
         # ENHANCED EV-BASED ALLOCATION: Optimized based on Expected Value analysis
         # Regime EV ranking: 3(2.230R) > 5(0.761R) > 0(0.494R) > 2(0.166R) > 1(0.024R) > 4(-0.206R) > 6(-0.901R)
         
-        if regime_id == 3:  # EXTREME_OUTLIER - HIGHEST EV (2.230R, 75% WR)
-            base_percent = 0.40  # Maximum allocation for best EV regime
-        elif regime_id == 5:  # BREAKOUT_MOMENTUM - HIGH EV (0.761R, 60% WR)
+        # NOTE: regimes 3 and 6 are omitted deliberately. Both map to WAIT_AND_SEE,
+        # which is forced to base_percent = 0.0 below and blocked by
+        # should_trade_regime(), so their former entries (0.40 and 0.01) never executed.
+        # The remaining values are the in-sample-fitted ladder documented in
+        # Overfitting_Diagnosis.md item 1; Phase 4 replaces them with per-fold fits.
+        if regime_id == 5:  # BREAKOUT_MOMENTUM - HIGH EV (0.761R, 60% WR)
             base_percent = 0.30  # Strong allocation for high EV
         elif regime_id == 0:  # STABLE_GROWTH - GOOD EV (0.494R, 54% WR)
             base_percent = 0.25  # Good allocation for solid EV
@@ -167,8 +157,6 @@ class RegimeBasedTradingStrategy:
             base_percent = 0.08  # Small allocation for minimal EV
         elif regime_id == 4:  # DEFENSIVE_STABLE - NEGATIVE EV (-0.206R, 40% WR)
             base_percent = 0.03  # Minimal allocation for negative EV
-        elif regime_id == 6:  # EXTREME_VOLATILITY - WORST EV (-0.901R, 0% WR)
-            base_percent = 0.01  # Nearly avoid this regime
         else:
             # Fallback for unmapped regimes
             base_percent = 0.10
@@ -315,14 +303,15 @@ class RegimeBasedTradingStrategy:
         market_stress = regime_data['market_stress']
         
         # Enhanced volatility-adjusted stop loss
+        # Keys must match the strategy strings the regime mapping actually emits.
+        # The previous table was keyed on BASELINE/BREAKOUT/DEFENSIVE/CRISIS/
+        # EXTREME_VOLATILITY, none of which are ever produced, so every regime except
+        # STABLE_GROWTH and MOMENTUM silently fell through to the default.
         base_stop_loss = {
-            "CRISIS": 0.06,           # Tighter stops in crisis (6%)
-            "BASELINE": 0.04,         # Tight stops for best regime (4%)
-            "STABLE_GROWTH": 0.04,    # Tight stops for stable regime (4%)
-            "MOMENTUM": 0.05,         # Moderate stops for momentum (5%)
-            "BREAKOUT": 0.06,         # Wider stops for breakouts (6%)
-            "DEFENSIVE": 0.08,        # Wider stops if holding defensive (8%)
-            "EXTREME_VOLATILITY": 0.10  # Widest stops for extreme vol (10%)
+            "STABLE_GROWTH": 0.04,
+            "MOMENTUM": 0.05,
+            "BALANCED": 0.04,
+            "CONSERVATIVE": 0.08,
         }
         
         base_stop = base_stop_loss.get(strategy, 0.05)
@@ -342,13 +331,10 @@ class RegimeBasedTradingStrategy:
         
         # Enhanced take profit with asymmetric risk/reward
         risk_reward_ratios = {
-            "BASELINE": 3.0,          # 3:1 R/R for best regime
-            "BREAKOUT": 2.5,          # 2.5:1 R/R for breakouts
-            "STABLE_GROWTH": 2.0,     # 2:1 R/R for stable growth
-            "MOMENTUM": 2.0,          # 2:1 R/R for momentum
-            "CRISIS": 1.5,            # 1.5:1 R/R for crisis
-            "DEFENSIVE": 1.0,         # 1:1 R/R if holding defensive
-            "EXTREME_VOLATILITY": 1.0 # 1:1 R/R if holding extreme vol
+            "STABLE_GROWTH": 2.0,
+            "MOMENTUM": 2.0,
+            "BALANCED": 3.0,
+            "CONSERVATIVE": 1.0,
         }
         
         risk_reward = risk_reward_ratios.get(strategy, 2.0)
@@ -379,9 +365,8 @@ class RegimeBasedTradingStrategy:
         # Using actual regime EV data: EXTREME_OUTLIER(2.230R), BREAKOUT_MOMENTUM(0.761R), 
         # STABLE_GROWTH(0.494R), BASELINE_MARKET(0.166R), etc.
         
-        if regime_id == 3:  # EXTREME_OUTLIER - HIGHEST EV (2.230R, 75% WR)
-            threshold = 0.02  # Ultra-low threshold - capture all opportunities
-        elif regime_id == 5:  # BREAKOUT_MOMENTUM - HIGH EV (0.761R, 60% WR)  
+        # regimes 3 and 6 omitted: unreachable, see calculate_position_size()
+        if regime_id == 5:  # BREAKOUT_MOMENTUM - HIGH EV (0.761R, 60% WR)  
             threshold = 0.06  # Very low threshold for high EV regime
         elif regime_id == 0:  # STABLE_GROWTH - GOOD EV (0.494R, 54% WR)
             threshold = 0.08  # Low threshold for solid EV
@@ -391,8 +376,6 @@ class RegimeBasedTradingStrategy:
             threshold = 0.45  # High threshold - very selective
         elif regime_id == 4:  # DEFENSIVE_STABLE - NEGATIVE EV (-0.206R, 40% WR)
             threshold = 0.65  # Very high threshold - avoid most trades
-        elif regime_id == 6:  # EXTREME_VOLATILITY - WORST EV (-0.901R, 0% WR)
-            threshold = 0.85  # Extremely high threshold - nearly avoid all
         else:
             # Fallback for unmapped regimes
             threshold = 0.35
@@ -420,59 +403,13 @@ class RegimeBasedTradingStrategy:
         
         return {symbol: True for symbol, _ in qualified_coins}
     
-    def initialize_ev_system(self, force_recalculate: bool = False) -> None:
-        """
-        Initialize the Expected Value system with historical trade data
-        """
-        if not self.use_ev_filter:
-            return
-            
-        print("🔧 Initializing Expected Value system...")
-        
-        if self.trades:
-            # Analyze historical trades to build EV model
-            self.ev_analyzer.analyze_historical_trades(self.trades, recalculate=force_recalculate)
-            self.ev_initialized = True
-            print("✅ EV system initialized with historical trade data")
-        else:
-            print("⚠️  No historical trades available, EV filter disabled for this run")
-            self.ev_initialized = False
-    
-    def get_ev_summary(self) -> Dict:
-        """Get comprehensive EV analysis summary"""
-        if not self.ev_initialized:
-            return {"error": "EV system not initialized"}
-        
-        summary = {
-            "overall_metrics": self.ev_analyzer.overall_ev_metrics,
-            "regime_metrics": self.ev_analyzer.regime_ev_metrics,
-            "settings": {
-                "min_ev_threshold": self.ev_analyzer.min_ev_threshold,
-                "max_risk_per_trade": self.ev_analyzer.max_risk_per_trade
-            }
-        }
-        
-        return summary
-    
-    def update_ev_settings(self, min_ev_threshold: float = None, max_risk_per_trade: float = None):
-        """Update EV analyzer settings"""
-        if min_ev_threshold is not None:
-            self.ev_analyzer.min_ev_threshold = min_ev_threshold
-            print(f"🎯 Updated minimum EV threshold to {min_ev_threshold:.3f}R")
-            
-        if max_risk_per_trade is not None:
-            self.ev_analyzer.max_risk_per_trade = max_risk_per_trade
-            print(f"🛡️  Updated max risk per trade to {max_risk_per_trade:.1%}")
-    
     def get_max_positions(self, regime_data: Dict) -> int:
         """
         Get maximum number of positions based on regime
         """
         strategy = regime_data['strategy']
         
-        if strategy == "CRISIS":
-            return 3  # Moderate positions in crisis (increased from 2)
-        elif strategy == "WAIT_AND_SEE":
+        if strategy == "WAIT_AND_SEE":
             return 2  # Limited but not minimal (increased from 1)
         elif strategy in ["MOMENTUM", "BREAKOUT"]:
             return 8  # Allow many positions in momentum (increased from 6)
@@ -582,17 +519,6 @@ class RegimeBasedTradingStrategy:
         }
         return strategies.get(regime_id, "UNKNOWN")
 
-        # Close positions for coins not in new regime (from rebalancePortfolio)
-        coin_scores = self.calculate_coin_scores(new_regime_data)
-
-        positions_to_close = []
-        for symbol, position in self.positions.items():
-            if symbol not in coin_scores or coin_scores[symbol] < 0.4:
-                positions_to_close.append(symbol)
-
-        for symbol in positions_to_close:
-            self.close_position(symbol, current_prices[symbol], "regime_rebalance")
-
     def execute_trading_cycle(self, regime_data: Dict, current_prices: Dict[str, float],
                               timestamp: pd.Timestamp) -> None:
         """
@@ -671,35 +597,10 @@ class RegimeBasedTradingStrategy:
                             self.log_decision('entry', symbol, 'skip', risk_reasoning, timestamp)
                             continue
                         
-                        # Apply EV filter if enabled and initialized
-                        if self.use_ev_filter and self.ev_initialized:
-                            portfolio_value = self.get_portfolio_value(current_prices)
-                            
-                            should_take, ev_analysis = self.ev_analyzer.should_take_trade(
-                                entry_price=current_price,
-                                stop_loss=stop_loss,
-                                position_size=position_qty,
-                                portfolio_value=portfolio_value,
-                                regime_id=regime_data['regime_id']
-                            )
-                            
-                            if should_take:
-                                # Log successful entry decision with comprehensive reasoning
-                                entry_reasoning = self.build_entry_reasoning(regime_data, symbol, coin_score, 
-                                                                           current_price, position_qty, stop_loss, ev_analysis)
-                                self.log_decision('entry', symbol, 'open', entry_reasoning, timestamp)
-                                self.open_position(symbol, position_qty, current_price, regime_data, timestamp)
-                            else:
-                                # Log EV rejection decision
-                                rejection_reasoning = self.build_rejection_reasoning(regime_data, symbol, coin_score, 
-                                                                                  current_price, position_qty, stop_loss, ev_analysis)
-                                self.log_decision('entry', symbol, 'skip', rejection_reasoning, timestamp)
-                        else:
-                            # No EV filter, take trade with risk validation - log decision
-                            entry_reasoning = self.build_entry_reasoning(regime_data, symbol, coin_score, 
-                                                                       current_price, position_qty, stop_loss, None)
-                            self.log_decision('entry', symbol, 'open', entry_reasoning, timestamp)
-                            self.open_position(symbol, position_qty, current_price, regime_data, timestamp)
+                        entry_reasoning = self.build_entry_reasoning(regime_data, symbol, coin_score,
+                                                                   current_price, position_qty, stop_loss)
+                        self.log_decision('entry', symbol, 'open', entry_reasoning, timestamp)
+                        self.open_position(symbol, position_qty, current_price, regime_data, timestamp)
 
     def open_position(self, symbol: str, quantity: float, entry_price: float,
                       regime_data: Dict, timestamp: pd.Timestamp) -> None:
@@ -731,9 +632,8 @@ class RegimeBasedTradingStrategy:
         print(f"✅ Opened {symbol}: {quantity:.4f} @ ${entry_price:.2f} "
               f"(SL: ${stop_loss:.2f}, TP: ${take_profit:.2f})")
 
-    def build_entry_reasoning(self, regime_data: Dict, symbol: str, coin_score: float, 
-                             current_price: float, position_qty: float, stop_loss: float, 
-                             ev_analysis: Optional[Dict]) -> Dict:
+    def build_entry_reasoning(self, regime_data: Dict, symbol: str, coin_score: float,
+                             current_price: float, position_qty: float, stop_loss: float) -> Dict:
         """
         Build comprehensive reasoning for entry decisions
         """
@@ -810,28 +710,6 @@ class RegimeBasedTradingStrategy:
             ]
         }
         
-        if ev_analysis:
-            reasoning['ev_analysis'] = ev_analysis
-            reasoning['rationale'].append(f"EV analysis confirms positive expected value: {ev_analysis.get('expected_value_r', 0):.3f}R")
-        
-        return reasoning
-    
-    def build_rejection_reasoning(self, regime_data: Dict, symbol: str, coin_score: float, 
-                                current_price: float, position_qty: float, stop_loss: float, 
-                                ev_analysis: Optional[Dict]) -> Dict:
-        """
-        Build reasoning for trade rejections
-        """
-        reasoning = self.build_entry_reasoning(regime_data, symbol, coin_score, current_price, position_qty, stop_loss, ev_analysis)
-        
-        # Add rejection-specific rationale
-        if ev_analysis and not ev_analysis.get('ev_ok', False):
-            reasoning['rationale'] = [
-                f"EV REJECTION: Expected value {ev_analysis.get('expected_value_r', 0):.3f}R below threshold {ev_analysis.get('min_ev_required', 0):.3f}R",
-                f"Regime {regime_data['regime_id']} win rate only {ev_analysis.get('win_rate', 0):.1f}%",
-                f"Risk-adjusted expected value too low for trade execution"
-            ]
-        
         return reasoning
     
     def get_regime_base_allocation(self, regime_id: int) -> float:
@@ -839,13 +717,11 @@ class RegimeBasedTradingStrategy:
         Get EV-optimized base allocation percentage for regime
         """
         allocations = {
-            3: 0.40,  # EXTREME_OUTLIER - HIGHEST EV (2.230R, 75% WR)
             5: 0.30,  # BREAKOUT_MOMENTUM - HIGH EV (0.761R, 60% WR)
             0: 0.25,  # STABLE_GROWTH - GOOD EV (0.494R, 54% WR)
             2: 0.15,  # BASELINE_MARKET - LOW EV (0.166R, 57.5% WR)
             1: 0.08,  # MODERATE_MOMENTUM - MINIMAL EV (0.024R, 44% WR)
             4: 0.03,  # DEFENSIVE_STABLE - NEGATIVE EV (-0.206R, 40% WR)
-            6: 0.01   # EXTREME_VOLATILITY - WORST EV (-0.901R, 0% WR)
         }
         return allocations.get(regime_id, 0.10)
     
@@ -1286,17 +1162,6 @@ class RegimeBasedTradingStrategy:
                     if annualized_volatility > 5.0:  # More than 500% volatility suggests error
                         annualized_volatility = min(annualized_volatility, 2.0)  # Cap at 200%
         
-        # Add EV metrics if available
-        ev_metrics = {}
-        if self.ev_initialized and self.ev_analyzer.overall_ev_metrics:
-            ev_metrics = {
-                'expected_value_r': self.ev_analyzer.overall_ev_metrics.expected_value_r,
-                'expected_value_dollars': self.ev_analyzer.overall_ev_metrics.expected_value_dollars,
-                'ev_win_rate': self.ev_analyzer.overall_ev_metrics.win_rate,
-                'ev_avg_win_r': self.ev_analyzer.overall_ev_metrics.avg_win_r,
-                'ev_avg_loss_r': self.ev_analyzer.overall_ev_metrics.avg_loss_r
-            }
-
         return {
             'initial_capital': self.initial_capital,
             'final_value': final_value,
@@ -1317,7 +1182,6 @@ class RegimeBasedTradingStrategy:
             'equity_curve': self.equity_curve,
             'decision_log': self.decision_log if self.enable_decision_explanations else [],
             'decision_summary': self.get_decision_summary() if self.enable_decision_explanations else {},
-            **ev_metrics  # Add EV metrics to the summary
         }
     
     def get_decision_summary(self) -> Dict:

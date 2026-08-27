@@ -106,6 +106,10 @@ backtest_analysis_old.ipynb
 test_*.py
 *_test.py
 check_*.py
+
+# ...except the pipeline guard tests, which are part of the methodology, not scratch work
+!crypto_cluster_pca/data_pipeline/test_causality.py
+!crypto_cluster_pca/data_pipeline/test_quarantine.py
 check_results.py
 run_backtest.py
 strategy_comparison.py

@@ -40,7 +40,7 @@ def main():
     
     # Create necessary directories
     os.makedirs("crypto_cluster_pca/data", exist_ok=True)
-    os.makedirs("shared_regime_data/regime_output", exist_ok=True)
+    os.makedirs("crypto_cluster_pca/data_cache/binance_daily", exist_ok=True)
     print("✅ Created necessary directories")
     
     # Check if Jupyter is available
@@ -52,19 +52,13 @@ def main():
     print("=" * 30)
     print("")
     print("📋 Next steps:")
-    print("1. Run Python analysis:")
-    print("   cd crypto_cluster_pca/src")
-    print("   python crypto_regime_analysis.py")
+    print("1. Fetch historical data:")
+    print("   python crypto_cluster_pca/data_pipeline/binance_data.py")
     print("")
-    print("2. Run backtesting:")
-    print("   cd crypto_cluster_pca/backtest_system")
-    print("   python run_backtest.py")
+    print("2. Verify the pipeline is causal:")
+    print("   python crypto_cluster_pca/data_pipeline/test_causality.py")
     print("")
-    print("3. Build C++ trading system:")
-    print("   cd paper_trading")
-    print("   ./build.sh")
-    print("")
-    print("4. Explore Jupyter notebooks:")
+    print("3. Explore Jupyter notebooks:")
     print("   cd crypto_cluster_pca/research")
     print("   jupyter notebook")
 

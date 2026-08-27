@@ -1319,107 +1319,6 @@ def create_research_based_regime_output(current_regime_id, pca_df, regime_stats_
     return output_data
 
 
-def save_research_based_regime_output(output_data, output_dir="../../shared_regime_data/regime_output"):
-    """
-    Save comprehensive regime analysis output optimized for high-frequency trading cycles.
-    
-    This function implements professional-grade output management for systematic trading:
-    
-    Output Management:
-    - **Primary Output**: Always-current regime file for trading system integration
-    - **Logging Strategy**: Periodic archival logging (every 30 minutes) to manage disk usage
-    - **Performance Optimization**: Minimal I/O overhead for high-frequency cycles
-    - **Format Standardization**: JSON format compatible with multiple programming languages
-    
-    File Structure:
-    - `regime_for_cpp.json`: Primary output file (always current)
-    - `json_log/regime_15min_*.json`: Archival logs (30-minute intervals)
-    
-    Integration Features:
-    - **Cross-Platform**: JSON format works with C++, Python, JavaScript systems
-    - **Real-Time Updates**: Sub-second file updates for live trading
-    - **Structured Logging**: Timestamped entries for backtesting and analysis
-    - **Resource Management**: Intelligent logging frequency to manage storage
-    
-    Parameters:
-    -----------
-    output_data : dict
-        Comprehensive regime analysis output from create_research_based_regime_output
-    output_dir : str, default "../../shared_regime_data/regime_output"
-        Directory path for primary trading system integration
-        
-    Returns:
-    --------
-    str
-        Path to primary output file for trading system integration
-        
-    Notes:
-    ------
-    Optimized for 15-minute analysis cycles with minimal latency and resource usage.
-    The output format and timing are critical for maintaining real-time trading performance.
-    """
-    now = datetime.now()
-    timestamp_str = now.strftime("%Y%m%d_%H%M%S")
-
-    # Save to shared folder for C++
-    shared_dir = os.path.abspath(output_dir)
-    os.makedirs(shared_dir, exist_ok=True)
-    cpp_output_file = os.path.join(shared_dir, "regime_for_cpp.json")
-
-    # For 15-minute cycles, keep smaller log files (only save every 30 minutes to logs)
-    save_to_log = (now.minute % 30 == 0)  # Only log every 30 minutes
-    
-    if save_to_log:
-        log_dir = "../logs/json_logs"
-        os.makedirs(log_dir, exist_ok=True)
-        log_filename = os.path.join(log_dir, f"regime_15min_{timestamp_str}.json")
-    
-    # Update timestamps
-    output_data["timestamp"] = now.strftime("%Y-%m-%d %H:%M:%S")
-    output_data["analysis_timestamp"] = now.strftime("%Y-%m-%d %H:%M:%S")
-    output_data["cycle_type"] = "15_minute_optimized"
-
-    # Always save C++ file (overwrite for latest)
-    with open(cpp_output_file, 'w') as f:
-        json.dump(output_data, f, indent=2)
-
-    # Conditional log saving
-    if save_to_log:
-        with open(log_filename, 'w') as f:
-            json.dump(output_data, f, indent=2)
-        print(f"📝 30-min log: {log_filename}")
-    
-    # Concise output for 15-minute cycles
-    print(f"🔬 15-MIN REGIME UPDATE | R{output_data['regime_id']}:{output_data['strategy']} | Trade:{output_data['should_trade']} | PC1:{output_data['pc1_market_factor']:.2f} | Persist:{output_data['persistence']:.3f}")
-
-    return cpp_output_file
-
-
-# =============================================================================
-# 6. MAIN EXECUTION PIPELINE
-# 
-# This section orchestrates the complete cryptocurrency regime analysis pipeline
-# from data collection through trading signal generation. The pipeline is optimized
-# for production trading environments with:
-# 
-# - Comprehensive error handling and recovery
-# - Performance monitoring and optimization
-# - Data validation and quality assurance
-# - Real-time integration capabilities
-# - Professional logging and debugging support
-# 
-# Execution Flow:
-# 1. Data Collection & Validation
-# 2. Real-Time Market Data Integration
-# 3. Feature Engineering (988+ features)
-# 4. PCA Analysis (25 optimal components)
-# 5. Regime Clustering (7 market regimes)
-# 6. Characteristic Analysis & Trading Output
-# 
-# Total execution time: <30 seconds for complete analysis cycle
-# =============================================================================
-
-
 def log_performance_metrics(start_time, step_name, details=""):
     """
     Log performance metrics for trading cycle optimization and system monitoring.
@@ -1541,12 +1440,10 @@ if __name__ == "__main__":
         transition_matrix, features_df, pca_model.explained_variance_ratio_
     )
 
-    output_file = save_research_based_regime_output(output_data)
     step_start = log_performance_metrics(step_start, "Trading Output")
     
     # Final performance summary
     total_duration = (datetime.now() - analysis_start).total_seconds()
     print(f"\n🎉 15-MIN CYCLE ANALYSIS COMPLETE!")
     print(f"⏱️  Total runtime: {total_duration:.2f}s")
-    print(f"📁 Trading output: {output_file}")
     print(f"🚀 Regime {current_regime_id} | Strategy: {output_data['strategy']} | Trade: {output_data['should_trade']}")

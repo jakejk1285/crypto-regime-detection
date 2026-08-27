@@ -19,6 +19,8 @@ notebook>=6.4.0
 # Data Collection and APIs
 requests>=2.31.0
 python-dotenv>=1.0.0
+ccxt>=4.5.76            # Binance historical klines (replaces CoinGecko collector)
+pyarrow>=14.0.0         # parquet cache for daily OHLCV
 
 # Development Utilities
 tqdm>=4.64.0
@@ -28,5 +30,4 @@ joblib>=1.2.0
 # Optional: Advanced Trading Features
 # Uncomment if needed for enhanced functionality
 # ta-lib>=0.4.0          # Technical Analysis Library
-# ccxt>=2.0.0            # Cryptocurrency Exchange Trading Library
 # alpaca-trade-api>=3.0.0  # Alpaca Trading API
