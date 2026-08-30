@@ -55,7 +55,7 @@ not skill.
   0.000e+00 across 5 cut points). `test_quarantine.py` AST-parses pipeline modules and
   fails on any import from the legacy `backtest_system/`, catching direct imports,
   `importlib`, and `sys.path` escapes.
-- **15 relational features** — BTC volume-share dominance, alt-vs-BTC spreads, rotation
+- **21 relational features** — BTC volume-share dominance, alt-vs-BTC spreads, rotation
   breadth, cross-sectional dispersion, rolling pairwise correlation.
 - **Principled model selection** — silhouette and gap statistic for k-means, BIC/AIC for
   GMM, across k=2..12, with the reasoning for why the criteria disagree.

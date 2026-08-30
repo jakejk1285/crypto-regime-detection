@@ -70,10 +70,12 @@ tier contains the **2018 bear market**. A 14-asset universe would have started
 | **2250** | **stitched out-of-sample test days — the actual evidence base** |
 
 **Features.** 78 features in three groups, all causal:
-- 60 per-asset (returns, RSI, price/SMA ratio, volatility, VaR-95, momentum)
-- 3 market-wide (momentum, breadth, BTC/ETH correlation)
-- **15 relational** — BTC volume-share dominance, alt-vs-BTC spreads and rotation
-  breadth, cross-sectional return dispersion, 30d/60d average pairwise correlation
+- **54 per-asset** (9 each across 6 assets): 1d/7d/30d returns, RSI-14, RSI-21,
+  price/SMA-14 ratio, 20d volatility, 20d VaR-95, 14d momentum
+- **3 market-wide**: 14d momentum, positive breadth, BTC/ETH correlation
+- **21 relational**: BTC volume-share dominance and relative strength, alt-vs-BTC
+  spreads per asset, aggregate rotation signals and breadth, cross-sectional return
+  dispersion, 30d/60d average pairwise correlation
 
 The relational group is why six assets rather than one: per-asset technicals cannot
 distinguish "BTC leads, alts bleed" from "alts outrun BTC." Both look like ordinary
